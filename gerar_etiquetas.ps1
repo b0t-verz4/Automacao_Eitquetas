@@ -1,32 +1,21 @@
+<# :
+@echo off
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression (Get-Content '%~f0' -Raw -Encoding UTF8)"
+exit
+#>
+
 # =========================================================
 # Script: gerar_etiquetas.ps1
-# Objetivo: ler a planilha do dia (nome = data de hoje, dd.mm.yyyy),
-#           filtrar as linhas onde a coluna J contem "Kelcey"
-#           e gerar um HTML pronto para impressao em formato
-#           de etiquetas (grade, varias por pagina).
-#
-# Requisito (uma unica vez, no PowerShell normal do usuario):
-#   Install-Module -Name ImportExcel -Scope CurrentUser -Force
 # =========================================================
 
 param(
-    # Pasta onde ficam as planilhas diarias (OneDrive sincronizado)
-    [string]$PastaPlanilhas = "C:\Users\ENTREGAS01\OneDrive",
-
-    # Data usada tanto para achar a planilha do dia quanto para nomear o HTML final
+    [string]$PastaOneDrive = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\OneDrive").UserFolder,
+    [string]$PastaPlanilhas = "$PastaOneDrive",
     [string]$DataArquivo = (Get-Date -Format "dd.MM.yyyy"),
-
-    # Nome do arquivo do dia. Por padrao, monta sozinho com a data de hoje.
     [string]$NomeArquivo = "$DataArquivo.xlsx",
-
-    # Aba a ler. Deixe $null para pegar a primeira aba.
     [string]$NomeAba = $null,
-
-    # Texto a ser buscado na coluna J (filtro)
     [string]$FiltroResponsavel = "Kelcey",
-
-    # Onde salvar o HTML final: Area de Trabalho, com data + "KELCEY"
-    [string]$CaminhoHTML = "C:\Users\ENTREGAS01\Desktop\$DataArquivo KELCEY.html"
+    [string]$CaminhoHTML = "$PastaOneDrive\$DataArquivo KELCEY.html"
 )
 
 Import-Module ImportExcel -ErrorAction Stop
@@ -37,27 +26,24 @@ if (-not (Test-Path $CaminhoExcel)) {
     throw "Planilha do dia nao encontrada em: $CaminhoExcel"
 }
 
-# --- 1. Ler os dados da planilha pelas letras das colunas -------------------
-# HeaderName define nomes proprios para as colunas A, B, C, D, E, F, G, H, I, J, K
-# (nao importa o titulo que estiver escrito na planilha, a leitura e' por posicao)
 $colunas = @(
-    'Protocolo',   # A
-    'Nome',        # B
-    'ColC',        # C (nao usada)
-    'Numero',      # D
-    'ColE',        # E (nao usada)
-    'ColF',        # F (nao usada)
-    'Cidade',      # G
-    'Bairro',      # H
-    'ColI',        # I (nao usada)
-    'Responsavel', # J  -> filtro "Kelcey"
-    'Endereco'     # K
+    'Protocolo',
+    'Nome',
+    'Numero',
+    'ColD',
+    'ColE',
+    'Responsavel',
+    'ColG',
+    'Cidade',
+    'Bairro',
+    'Endereco',
+    'ColK'
 )
 
 $parametros = @{
     Path       = $CaminhoExcel
     HeaderName = $colunas
-    StartRow   = 2   # pula a linha 1, que e' o cabecalho de verdade da planilha
+    StartRow   = 2
 }
 if ($NomeAba) { $parametros['WorksheetName'] = $NomeAba }
 
@@ -67,28 +53,25 @@ if (-not $dados -or $dados.Count -eq 0) {
     throw "Nenhum dado encontrado na planilha do dia."
 }
 
-# --- 2. Filtrar somente as linhas da pessoa desejada (coluna J) -------------
 $dadosFiltrados = $dados | Where-Object { $_.Responsavel -like "*$FiltroResponsavel*" }
 
 if (-not $dadosFiltrados -or $dadosFiltrados.Count -eq 0) {
-    Write-Warning "Nenhuma linha encontrada com '$FiltroResponsavel' na coluna J."
+    Write-Warning "Nenhuma linha encontrada com '$FiltroResponsavel' na coluna F."
 }
 
-# --- 3. Montar uma etiqueta em HTML para cada linha filtrada ----------------
 $etiquetasHtml = ""
 foreach ($linha in $dadosFiltrados) {
     $etiquetasHtml += @"
         <div class="etiqueta">
-            <div class="campo"><span class="rotulo">PROTOCOLO:</span> $($linha.Protocolo)</div>
-            <div class="campo"><span class="rotulo">NOME:</span> $($linha.Nome)</div>
-            <div class="campo"><span class="rotulo">ENDERECO:</span> $($linha.Endereco) <span class="rotulo">N:</span> $($linha.Numero)</div>
+            <div class="campo"><span class="rotulo">NOME:</span> $($linha.Nome) <span class="rotulo">PROTOCOLO:</span> $($linha.Protocolo)</div>
+            <div class="campo"><span class="rotulo">ENDERECO:</span> $($linha.Endereco)</div>
             <div class="campo"><span class="rotulo">BAIRRO:</span> $($linha.Bairro)</div>
             <div class="campo"><span class="rotulo">CIDADE:</span> $($linha.Cidade)</div>
+            <div class="campo"><span class="rotulo">Número:</span> $($linha.Numero)</div>
         </div>
 "@
 }
 
-# --- 4. Montar o documento HTML completo -------------------------------------
 $htmlCompleto = @"
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -103,24 +86,21 @@ $htmlCompleto = @"
     * { box-sizing: border-box; }
     body {
         margin: 0;
-        font-family: Arial, Helvetica, sans-serif;
+        font-family: Arial Bold, Helvetica, sans-serif;
     }
-    /* Flexbox com quebra de linha: cada etiqueta e' protegida contra
-       ser cortada ao meio entre duas paginas na impressao. */
     .folha {
         display: flex;
         flex-wrap: wrap;
-        gap: 4mm;
+        gap: 8mm;
     }
     .etiqueta {
-        width: calc(50% - 2mm);   /* 2 etiquetas por linha - mude para 33.33% se quiser 3 */
+        width: calc(100% - 2mm);
         border: 1px dashed #999999;
         border-radius: 2mm;
         padding: 4mm;
         min-height: 32mm;
         overflow: hidden;
 
-        /* Impede que a etiqueta seja dividida entre duas paginas */
         break-inside: avoid;
         page-break-inside: avoid;
         -webkit-column-break-inside: avoid;
@@ -131,7 +111,7 @@ $htmlCompleto = @"
         gap: 1.5mm;
     }
     .campo {
-        font-size: 11pt;
+        font-size: 14pt;
         color: #222222;
     }
     .rotulo {
@@ -143,7 +123,7 @@ $htmlCompleto = @"
     }
 </style>
 </head>
-<body>
+<body contenteditable="true">
     <div class="folha">
 $etiquetasHtml
     </div>
@@ -151,8 +131,9 @@ $etiquetasHtml
 </html>
 "@
 
-# --- 5. Salvar o arquivo -----------------------------------------------------
 Set-Content -Path $CaminhoHTML -Value $htmlCompleto -Encoding UTF8
 
 Write-Output "Etiquetas geradas com sucesso em: $CaminhoHTML"
 Write-Output "Total de etiquetas geradas: $($dadosFiltrados.Count)"
+
+Start-Process $CaminhoHTML
